@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "401669762980",
+    "project_id": "mobile-computing-data",
+    "storage_bucket": "mobile-computing-data.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:401669762980:android:d62fbef06a5e6e2e025b31",
+        "android_client_info": {
+          "package_name": "com.example.acceltest"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "401669762980-q19l0dc624vf6kr8l02glv08b3eiuvcb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9jXyhwDbxuPYBa4dk6FQEx1CetWEZNx8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "401669762980-q19l0dc624vf6kr8l02glv08b3eiuvcb.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
