@@ -5,6 +5,9 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Bundle;
 import android.speech.SpeechRecognizer;
 import android.util.Log;
@@ -23,9 +26,11 @@ import androidx.navigation.ui.AppBarConfiguration;
 import androidx.navigation.ui.NavigationUI;
 
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
@@ -49,6 +54,9 @@ public class MainActivity extends AppCompatActivity {
     float vy = 0;
     float vz = 0;
     boolean running;
+
+    MediaPlayer mediaPlayer;
+    AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -180,5 +188,69 @@ public class MainActivity extends AppCompatActivity {
             accuracy = passedAccuracy;
         }
     };
+
+    // Checks that the input string is a valid number 0-10
+    private boolean isValidNumber(String input){
+        try {
+            int num = Integer.parseInt(input);
+            if (num >= 0 && num <= 10) {
+                return true;
+            }
+            return false;
+        }
+        catch(Exception e) {
+            return false;
+        }
+
+    }
+
+    // Checks the format of a command intended to change the volume
+    private boolean checkVolumeCommand(String command) {
+        String[] components = command.split(" ");
+        // Check the format "Volume X"
+        // X can only be a number 0-10.
+        // "Volume X" will set the volume of the phone to x/10 % of the max volume
+        if(components.length != 2) {
+            return false;
+        }
+        if(!components[0].toLowerCase().equals("volume") || !isValidNumber(components[1])) {
+            return false;
+        }
+        return true;
+    }
+
+    private double parseVolumeCommand(String command) {
+        String strNum = command.split(" ")[1];
+        return Integer.parseInt(strNum) / 10.0;
+    }
+
+    private void runVolumeCommand(String command) {
+        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        double percent = parseVolumeCommand(command);
+        int newVolume = (int) (maxVolume * percent);
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0);
+    }
+
+    private boolean checkCallCommand(String command) {
+        String[] components = command.split(" ");
+        if(!components[0].toLowerCase().equals("call")) {
+            return false;
+        }
+        // Check if person is in contacts
+        return true;
+    }
+
+    private void runCallCommand(String command) {
+        
+    }
+
+    private void callCommand(String command) {
+        if(checkVolumeCommand(command)) {
+            runVolumeCommand(command);
+        }
+        else if(checkCallCommand(command)) {
+            runCallCommand(command);
+        }
+    }
 }
 
