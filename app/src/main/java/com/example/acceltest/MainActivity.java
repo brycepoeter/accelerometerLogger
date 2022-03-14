@@ -6,6 +6,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
+import android.speech.SpeechRecognizer;
 import android.util.Log;
 
 import com.google.android.gms.tasks.OnFailureListener;
@@ -29,6 +30,7 @@ import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
     private SensorManager sensorManager;
+    private SpeechRecognizer speechRecognizer;
     float xValue;
     float yValue;
     float zValue;
@@ -42,6 +44,12 @@ public class MainActivity extends AppCompatActivity {
     long capturingStartTime;
     long capturingEndTime;
 
+    float speed;
+    float vx = 0;
+    float vy = 0;
+    float vz = 0;
+    boolean running;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -53,12 +61,13 @@ public class MainActivity extends AppCompatActivity {
         dataToPost = new ArrayList<>();
 
         // Set up accelerometer sensor
-        SensorManager sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         Sensor sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL);
 
         // Set up Cloud Firestore
         db = FirebaseFirestore.getInstance();
+
 
         // Set up nav
         BottomNavigationView navView = findViewById(R.id.nav_view);
@@ -139,6 +148,20 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void updateSpeed(SensorEvent event) {
+        float dT = (event.timestamp - timestamp) / 1000000;
+        vx += xValue * dT;
+        vy += yValue * dT;
+        vz += yValue * dT;
+        speed = (float) Math.sqrt(vx*vx + vy*vy + vz*vz);
+        if(speed > 2.2) {
+            running = true;
+        }
+        else {
+            running  = false;
+        }
+    }
+
     private SensorEventListener listener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent event) {
@@ -150,6 +173,7 @@ public class MainActivity extends AppCompatActivity {
             if (capturingActivated) {
                 captureData();
             }
+            updateSpeed(event);
         }
         @Override
         public void onAccuracyChanged(Sensor sensor, int passedAccuracy) {
