@@ -55,8 +55,6 @@ public class MainActivity extends AppCompatActivity {
     float vz = 0;
     boolean running;
 
-    AudioManager audioManager;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
