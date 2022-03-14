@@ -31,6 +31,8 @@ import com.example.acceltest.R;
 
 import java.sql.Time;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Hashtable;
 
 public class DashboardFragment extends Fragment {
 
@@ -121,6 +123,22 @@ public class DashboardFragment extends Fragment {
 
     // Checks that the input string is a valid number 0-10
     private boolean isValidNumber(String input){
+        HashMap<String, String> nums = new HashMap<String, String>();
+        nums.put("zero", "0");
+        nums.put("one", "1");
+        nums.put("two", "2");
+        nums.put("three", "3");
+        nums.put("four", "4");
+        nums.put("five", "5");
+        nums.put("six", "6");
+        nums.put("seven", "7");
+        nums.put("eight", "8");
+        nums.put("nine", "9");
+        nums.put("ten", "10");
+
+        if(nums.containsKey(input)) {
+            input = nums.get(input);
+        }
         try {
             int num = Integer.parseInt(input);
             if (num >= 0 && num <= 10) {
@@ -150,11 +168,28 @@ public class DashboardFragment extends Fragment {
     }
 
     private double parseVolumeCommand(String command) {
+        HashMap<String, Double> nums = new HashMap<String, Double>();
+        nums.put("zero", 0.0);
+        nums.put("one", .1);
+        nums.put("two", .2);
+        nums.put("three", .3);
+        nums.put("four", .4);
+        nums.put("five", .5);
+        nums.put("six", .6);
+        nums.put("seven", .7);
+        nums.put("eight", .8);
+        nums.put("nine", .9);
+        nums.put("ten", 1.0);
+
         String strNum = command.split(" ")[1];
+        if (nums.containsKey(strNum)) {
+            return nums.get(strNum);
+        }
         return Integer.parseInt(strNum) / 10.0;
     }
 
     private void runVolumeCommand(String command) {
+        System.out.println("run volume command");
         audioManager = (AudioManager) getActivity().getSystemService(Context.AUDIO_SERVICE);
         int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
         double percent = parseVolumeCommand(command);
@@ -172,10 +207,9 @@ public class DashboardFragment extends Fragment {
     }
 
     private void runCallCommand(String command) {
-
         String[] parts = command.split(" ");
         String target_name = parts[1];
-
+        System.out.println(target_name);
         Uri uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
         String[] projection = new String[] {ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                 ContactsContract.CommonDataKinds.Phone.NUMBER};
@@ -199,13 +233,16 @@ public class DashboardFragment extends Fragment {
         }
         cursor.close();
 
+        System.out.println(contactName);
+        System.out.println(contactNumber);
         Intent callIntent = new Intent(Intent.ACTION_CALL);
-        String uriString = "tel";
+        String uriString = "tel:";
         if (contactNumber.length() == 0) {
             return;
         }
 
         uriString = uriString.concat(contactNumber);
+        System.out.println(uriString);
         callIntent.setData(Uri.parse(uriString));
 
         if (ActivityCompat.checkSelfPermission(this.getContext(),
