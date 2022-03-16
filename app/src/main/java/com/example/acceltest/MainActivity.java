@@ -1,32 +1,54 @@
 package com.example.acceltest;
 
+import android.Manifest;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
 import android.speech.SpeechRecognizer;
+import android.text.TextUtils;
 import android.util.Log;
 
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.android.material.bottomnavigation.BottomNavigationView;
-import com.google.firebase.firestore.DocumentReference;
-import com.google.firebase.firestore.FirebaseFirestore;
-
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.fragment.app.FragmentTransaction;
 import androidx.navigation.NavController;
 import androidx.navigation.fragment.NavHostFragment;
 import androidx.navigation.ui.AppBarConfiguration;
 import androidx.navigation.ui.NavigationUI;
 
+import com.example.acceltest.ui.notifications.LogFragment;
+import com.example.acceltest.ui.notifications.NotificationsFragment;
+import com.example.acceltest.ui.notifications.NotificationsViewModel;
+import com.google.android.gms.location.ActivityRecognition;
+import com.google.android.gms.location.ActivityTransition;
+import com.google.android.gms.location.ActivityTransitionEvent;
+import com.google.android.gms.location.ActivityTransitionRequest;
+import com.google.android.gms.location.ActivityTransitionResult;
+import com.google.android.gms.location.DetectedActivity;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.firebase.firestore.FirebaseFirestore;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+
 
 public class MainActivity extends AppCompatActivity {
     private SensorManager sensorManager;
@@ -49,6 +71,29 @@ public class MainActivity extends AppCompatActivity {
     float vy = 0;
     float vz = 0;
     boolean running;
+
+    // Activity Recognizer
+    private final static String TAG = "MainActivity";
+
+    // TODO: Review check for devices with Android 10 (29+).
+    private boolean runningQOrLater =
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q;
+
+    private boolean activityTrackingEnabled;
+    public LogFragment mLogFragment;
+
+    private List<ActivityTransition> activityTransitionList;
+    NotificationsFragment notificationsFragment;
+    NotificationsViewModel notificationsViewModel;
+
+    // Action fired when transitions are triggered.
+    private final String TRANSITIONS_RECEIVER_ACTION =
+            "APP_ID" + "TRANSITIONS_RECEIVER_ACTION";
+
+    private PendingIntent mActivityTransitionsPendingIntent;
+    private TransitionsReceiver mTransitionsReceiver;
+    String printToScreenMessage = "Hasn't been set yet";
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,12 +123,150 @@ public class MainActivity extends AppCompatActivity {
         NavController navController = navHostFragment.getNavController();
         NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
         NavigationUI.setupWithNavController(navView, navController);
+
+        // Massive amount for activity recognition
+        activityTransitionList = new ArrayList<>();
+        activityTrackingEnabled = false;
+
+        // TODO: Add activity transitions to track.
+//
+//        mLogFragment =
+//                (LogFragment) getSupportFragmentManager().findFragmentById(R.id.log_fragment);
+
+        FragmentTransaction fragmentTransaction = getSupportFragmentManager().beginTransaction();
+        fragmentTransaction.add(R.id.navigation_notifications, new NotificationsFragment(), "NOTIFICATIONS_FRAGMENT");
+        fragmentTransaction.commit();
+        notificationsFragment = (NotificationsFragment) getSupportFragmentManager().findFragmentByTag("NOTIFICATIONS_FRAGMENT");
+
+        activityTransitionList.add(new ActivityTransition.Builder()
+                .setActivityType(DetectedActivity.RUNNING)
+                .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+                .build());
+        activityTransitionList.add(new ActivityTransition.Builder()
+                .setActivityType(DetectedActivity.RUNNING)
+                .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_EXIT)
+                .build());
+        activityTransitionList.add(new ActivityTransition.Builder()
+                .setActivityType(DetectedActivity.STILL)
+                .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+                .build());
+        activityTransitionList.add(new ActivityTransition.Builder()
+                .setActivityType(DetectedActivity.STILL)
+                .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_EXIT)
+                .build());
+
+        Intent intent = new Intent(TRANSITIONS_RECEIVER_ACTION);
+        mActivityTransitionsPendingIntent =
+                PendingIntent.getBroadcast(MainActivity.this, 0, intent, 0);
+
+        mTransitionsReceiver = new TransitionsReceiver();
+        enableActivityTransitions();
+
     }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        registerReceiver(mTransitionsReceiver, new IntentFilter(TRANSITIONS_RECEIVER_ACTION));
+    }
+
+    @Override
+    protected void onPause() {
+        if (activityTrackingEnabled) {
+            disableActivityTransitions();
+        }
+        super.onPause();
+    }
+
+
+    @Override
+    protected void onStop() {
+        unregisterReceiver(mTransitionsReceiver);
+
+        super.onStop();
+    }
+
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
         if (sensorManager != null) {
             sensorManager.unregisterListener(listener);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        // Start activity recognition if the permission was approved.
+        if (activityRecognitionPermissionApproved() && !activityTrackingEnabled) {
+            enableActivityTransitions();
+        }
+
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    private void enableActivityTransitions() {
+
+        Log.d(TAG, "enableActivityTransitions()");
+        ActivityTransitionRequest request = new ActivityTransitionRequest(activityTransitionList);
+
+        // Register for Transitions Updates.
+        Task<Void> task = ActivityRecognition.getClient(this)
+                .requestActivityTransitionUpdates(request, mActivityTransitionsPendingIntent);
+
+        task.addOnSuccessListener(
+                new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void result) {
+                        activityTrackingEnabled = true;
+                        printToScreen("Transitions Api was successfully registered.");
+
+                    }
+                });
+
+        task.addOnFailureListener(
+                new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        printToScreen("Transitions Api could NOT be registered: " + e);
+                        Log.e(TAG, "Transitions Api could NOT be registered: " + e);
+
+                    }
+                });
+    }
+
+
+    private void disableActivityTransitions() {
+
+        Log.d(TAG, "disableActivityTransitions()");
+
+        ActivityRecognition.getClient(this).removeActivityTransitionUpdates(mActivityTransitionsPendingIntent)
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        activityTrackingEnabled = false;
+                        printToScreen("Transitions successfully unregistered.");
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        printToScreen("Transitions could not be unregistered: " + e);
+                        Log.e(TAG,"Transitions could not be unregistered: " + e);
+                    }
+                });
+    }
+
+    private boolean activityRecognitionPermissionApproved() {
+
+        if (runningQOrLater) {
+
+            return PackageManager.PERMISSION_GRANTED == ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACTIVITY_RECOGNITION
+            );
+        } else {
+            return true;
         }
     }
 
@@ -180,5 +363,70 @@ public class MainActivity extends AppCompatActivity {
             accuracy = passedAccuracy;
         }
     };
+
+    private static String toActivityString(int activity) {
+        switch (activity) {
+            case DetectedActivity.STILL:
+                return "STILL";
+            case DetectedActivity.RUNNING:
+                return "RUNNING";
+            default:
+                return "UNKNOWN";
+        }
+    }
+
+    private static String toTransitionType(int transitionType) {
+        switch (transitionType) {
+            case ActivityTransition.ACTIVITY_TRANSITION_ENTER:
+                return "ENTER";
+            case ActivityTransition.ACTIVITY_TRANSITION_EXIT:
+                return "EXIT";
+            default:
+                return "UNKNOWN";
+        }
+    }
+
+    private void printToScreen(@NonNull String message) {
+//        LogView logView = mLogFragment.getLogView();
+//        logView.print(message);
+        printToScreenMessage = message;
+        Log.d(TAG, message);
+    }
+
+    public String getPrintMessage() {
+        return this.printToScreenMessage;
+    }
+
+    public class TransitionsReceiver extends BroadcastReceiver {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+
+            Log.d(TAG, "onReceive(): " + intent);
+
+            if (!TextUtils.equals(TRANSITIONS_RECEIVER_ACTION, intent.getAction())) {
+
+                printToScreen("Received an unsupported action in TransitionsReceiver: action = " +
+                        intent.getAction());
+                return;
+            }
+
+            if (ActivityTransitionResult.hasResult(intent)) {
+
+                ActivityTransitionResult result = ActivityTransitionResult.extractResult(intent);
+
+                for (ActivityTransitionEvent event : result.getTransitionEvents()) {
+
+                    String info = "Transition: " + toActivityString(event.getActivityType()) +
+                            " (" + toTransitionType(event.getTransitionType()) + ")" + "   " +
+                            new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date());
+
+                    printToScreen(info);
+                }
+            }
+        }
+    }
+
+
 }
 

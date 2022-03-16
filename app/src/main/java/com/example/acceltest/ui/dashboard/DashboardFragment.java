@@ -2,7 +2,6 @@ package com.example.acceltest.ui.dashboard;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.SystemClock;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -20,7 +19,6 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.example.acceltest.R;
 
-import java.sql.Time;
 import java.util.ArrayList;
 
 public class DashboardFragment extends Fragment {
@@ -92,7 +90,6 @@ public class DashboardFragment extends Fragment {
         speechRecognizer.setRecognitionListener(recognitionListener);
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         speechRecognizer.startListening(intent);
-
 
         dashboardViewModel = new ViewModelProvider(this).get(DashboardViewModel.class);
         View root = inflater.inflate(R.layout.fragment_dashboard, container, false);

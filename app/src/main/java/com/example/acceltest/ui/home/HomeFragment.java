@@ -7,16 +7,16 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
-import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.example.acceltest.MainActivity;
 import com.example.acceltest.R;
+
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class HomeFragment extends Fragment {
 
@@ -24,6 +24,7 @@ public class HomeFragment extends Fragment {
     private Button recordRun;
     private Button recordOther;
     private Button stopRecord;
+    String activityMessage;
     AlertDialog.Builder adBuilder;
     AlertDialog alertDialog;
 
@@ -33,12 +34,24 @@ public class HomeFragment extends Fragment {
                 new ViewModelProvider(this).get(HomeViewModel.class);
         View root = inflater.inflate(R.layout.fragment_home, container, false);
 
+        activityMessage = ((MainActivity) getActivity()).getPrintMessage();
+
         adBuilder = new AlertDialog.Builder(this.getContext());
         alertDialog = adBuilder.create();
 
         recordRun = root.findViewById(R.id.recordRun);
         recordOther = root.findViewById(R.id.recordOther);
         stopRecord = root.findViewById(R.id.stopRecord);
+
+        recordRun.setText(activityMessage);
+        Timer timer = new Timer();
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                activityMessage = ((MainActivity) getActivity()).getPrintMessage();
+                recordRun.setText(activityMessage);
+            }
+        }, 0, 100);
 
         recordRun.setOnClickListener(view -> {
             alertDialog.setTitle("Recording Running Data");
@@ -48,10 +61,11 @@ public class HomeFragment extends Fragment {
         });
 
         recordOther.setOnClickListener(view -> {
-            alertDialog.setTitle("Recording Non Running Data");
-            Log.d("RECORDING", "other");
+            String string = ((MainActivity) getActivity()).getPrintMessage();
+            alertDialog.setTitle(string);
+//            Log.d("RECORDING", "other");
             alertDialog.show();
-            ((MainActivity) getActivity()).startCapturing("other");
+//            ((MainActivity) getActivity()).startCapturing("other");
         });
 
         stopRecord.setOnClickListener(view -> {
@@ -62,4 +76,5 @@ public class HomeFragment extends Fragment {
 
         return root;
     }
+
 }
