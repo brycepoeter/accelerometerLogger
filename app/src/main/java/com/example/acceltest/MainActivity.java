@@ -83,11 +83,11 @@ public class MainActivity extends AppCompatActivity {
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
 
         activityTransitionList.add(new ActivityTransition.Builder()
-                .setActivityType(DetectedActivity.WALKING)
+                .setActivityType(DetectedActivity.RUNNING)
                 .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
                 .build());
         activityTransitionList.add(new ActivityTransition.Builder()
-                .setActivityType(DetectedActivity.WALKING)
+                .setActivityType(DetectedActivity.RUNNING)
                 .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_EXIT)
                 .build());
         activityTransitionList.add(new ActivityTransition.Builder()
@@ -216,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
         switch (activity) {
             case DetectedActivity.STILL:
                 return "STILL";
-            case DetectedActivity.WALKING:
+            case DetectedActivity.RUNNING:
                 return "RUNNING";
             default:
                 return "UNKNOWN";
@@ -270,7 +270,7 @@ public class MainActivity extends AppCompatActivity {
 
                     printToScreen(info);
 
-                    if (event.getActivityType() == DetectedActivity.WALKING) {
+                    if (event.getActivityType() == DetectedActivity.RUNNING) {
                         activity.setText(R.string.running);
 
 
