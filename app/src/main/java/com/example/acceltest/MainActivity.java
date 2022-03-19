@@ -7,31 +7,22 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
+import android.database.Cursor;
 import android.media.AudioManager;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.ContactsContract;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.text.TextUtils;
 import android.util.Log;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
-import androidx.fragment.app.FragmentTransaction;
-import androidx.navigation.NavController;
-import androidx.navigation.fragment.NavHostFragment;
-import androidx.navigation.ui.AppBarConfiguration;
-import androidx.navigation.ui.NavigationUI;
-
-import com.example.acceltest.ui.notifications.LogFragment;
-import com.example.acceltest.ui.notifications.NotificationsFragment;
-import com.example.acceltest.ui.notifications.NotificationsViewModel;
 import com.google.android.gms.location.ActivityRecognition;
 import com.google.android.gms.location.ActivityTransition;
 import com.google.android.gms.location.ActivityTransitionEvent;
@@ -41,40 +32,21 @@ import com.google.android.gms.location.DetectedActivity;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
-import com.google.android.material.bottomnavigation.BottomNavigationView;
-import com.google.firebase.firestore.FirebaseFirestore;
-
 import java.text.SimpleDateFormat;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 
 public class MainActivity extends AppCompatActivity {
-    private SensorManager sensorManager;
-    private SpeechRecognizer speechRecognizer;
-    float xValue;
-    float yValue;
-    float zValue;
-    float timestamp;
-    FirebaseFirestore db;
-    Integer accuracy;
-    Boolean postingActivated;
-    Boolean capturingActivated;
-    List<Map<String, Float>> dataToPost;
-    String dataLabel;
-    long capturingStartTime;
-    long capturingEndTime;
 
-    float speed;
-    float vx = 0;
-    float vy = 0;
-    float vz = 0;
-    boolean running;
+    private SpeechRecognizer speechRecognizer;
+    boolean listening = false;
+    AudioManager audioManager;
+    TextView activity;
+    TextView command;
 
     // Activity Recognizer
     private final static String TAG = "MainActivity";
@@ -84,11 +56,8 @@ public class MainActivity extends AppCompatActivity {
             android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q;
 
     private boolean activityTrackingEnabled;
-    public LogFragment mLogFragment;
 
     private List<ActivityTransition> activityTransitionList;
-    NotificationsFragment notificationsFragment;
-    NotificationsViewModel notificationsViewModel;
 
     // Action fired when transitions are triggered.
     private final String TRANSITIONS_RECEIVER_ACTION =
@@ -104,50 +73,21 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Set initial values
-        postingActivated = false;
-        capturingActivated = false;
-        dataToPost = new ArrayList<>();
-
-        // Set up accelerometer sensor
-        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        Sensor sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL);
-
-        // Set up Cloud Firestore
-        db = FirebaseFirestore.getInstance();
-
-
-        // Set up nav
-        BottomNavigationView navView = findViewById(R.id.nav_view);
-        AppBarConfiguration appBarConfiguration = new AppBarConfiguration.Builder(
-                R.id.navigation_home, R.id.navigation_dashboard, R.id.navigation_notifications)
-                .build();
-        final NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment);
-        NavController navController = navHostFragment.getNavController();
-        NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
-        NavigationUI.setupWithNavController(navView, navController);
-
         // Massive amount for activity recognition
         activityTransitionList = new ArrayList<>();
         activityTrackingEnabled = false;
 
-        // TODO: Add activity transitions to track.
-//
-//        mLogFragment =
-//                (LogFragment) getSupportFragmentManager().findFragmentById(R.id.log_fragment);
+        activity = (TextView) findViewById(R.id.activity);
+        command = (TextView) findViewById(R.id.command);
 
-        FragmentTransaction fragmentTransaction = getSupportFragmentManager().beginTransaction();
-        fragmentTransaction.add(R.id.navigation_notifications, new NotificationsFragment(), "NOTIFICATIONS_FRAGMENT");
-        fragmentTransaction.commit();
-        notificationsFragment = (NotificationsFragment) getSupportFragmentManager().findFragmentByTag("NOTIFICATIONS_FRAGMENT");
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
 
         activityTransitionList.add(new ActivityTransition.Builder()
-                .setActivityType(DetectedActivity.RUNNING)
+                .setActivityType(DetectedActivity.WALKING)
                 .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
                 .build());
         activityTransitionList.add(new ActivityTransition.Builder()
-                .setActivityType(DetectedActivity.RUNNING)
+                .setActivityType(DetectedActivity.WALKING)
                 .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_EXIT)
                 .build());
         activityTransitionList.add(new ActivityTransition.Builder()
@@ -194,9 +134,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (sensorManager != null) {
-            sensorManager.unregisterListener(listener);
-        }
     }
 
     @Override
@@ -274,105 +211,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void startPosting() {
-        postingActivated = true;
-    }
-
-    public void stopPosting() {
-        postingActivated = false;
-        dataToPost = new ArrayList<>();
-    }
-
-    public void startCapturing(String label) {
-        capturingStartTime = System.currentTimeMillis();
-        dataLabel = label;
-        capturingActivated = true;
-    }
-
-    public void stopCapturing() {
-        capturingEndTime = System.currentTimeMillis();
-        capturingActivated = false;
-        startPosting();
-        postData(dataLabel);
-        stopPosting();
-    }
-
-    public void postData(String collection) {
-        if (postingActivated) {
-
-            // Save capture end time
-            Map<String, String> endTime = new HashMap<>();
-            endTime.put("endTime", String.valueOf(capturingEndTime));
-            db.collection(collection)
-                    .document(String.valueOf(capturingStartTime))
-                    .collection("endTime")
-                    .add(endTime)
-                    .addOnSuccessListener(documentReference -> Log.d("ADDED END TIME", documentReference.getId()))
-                    .addOnFailureListener(e -> Log.d("FAILED ADD END TIME", e.getMessage()));
-
-            // Save each accelerometer reading under capture start time
-            dataToPost.forEach((input) -> db.collection(collection)
-                .document(String.valueOf(capturingStartTime))
-                .collection("data")
-                .add(input)
-                    .addOnSuccessListener(documentReference -> Log.d("ADDED DATA", documentReference.getId()))
-                    .addOnFailureListener(e -> Log.d("FAILED ADD DATA", e.getMessage())));
-        }
-    }
-
-    private void captureData() {
-        if (capturingActivated) {
-            if (xValue > 10 || yValue > 10 || zValue > 10) {
-                Map<String, Float> input = new HashMap<>();
-                input.put("time", timestamp);
-                input.put("accuracy", Float.valueOf(accuracy));
-                input.put("x", xValue);
-                input.put("y", yValue);
-                input.put("z", zValue);
-                dataToPost.add(input);
-                Log.d("DATA_POST_LENGTH:", String.valueOf(dataToPost.size()));
-            }
-        }
-    }
-
-    private void updateSpeed(SensorEvent event) {
-        float dT = (event.timestamp - timestamp) / 1000000;
-        vx += xValue * dT;
-        vy += yValue * dT;
-        vz += yValue * dT;
-        speed = (float) Math.sqrt(vx*vx + vy*vy + vz*vz);
-        if(speed > 2.2) {
-            running = true;
-        }
-        else {
-            running  = false;
-        }
-    }
-
-    private SensorEventListener listener = new SensorEventListener() {
-        @Override
-        public void onSensorChanged(SensorEvent event) {
-            xValue = Math.abs(event.values[0]);
-            yValue = Math.abs(event.values[1]);
-            zValue = Math.abs(event.values[2]);
-            accuracy = event.accuracy;
-            timestamp = event.timestamp;
-            if (capturingActivated) {
-                captureData();
-            }
-            updateSpeed(event);
-        }
-        @Override
-        public void onAccuracyChanged(Sensor sensor, int passedAccuracy) {
-            accuracy = passedAccuracy;
-        }
-    };
 
     private static String toActivityString(int activity) {
         switch (activity) {
             case DetectedActivity.STILL:
                 return "STILL";
-            case DetectedActivity.RUNNING:
+            case DetectedActivity.WALKING:
                 return "RUNNING";
             default:
                 return "UNKNOWN";
@@ -418,7 +262,6 @@ public class MainActivity extends AppCompatActivity {
             if (ActivityTransitionResult.hasResult(intent)) {
 
                 ActivityTransitionResult result = ActivityTransitionResult.extractResult(intent);
-
                 for (ActivityTransitionEvent event : result.getTransitionEvents()) {
 
                     String info = "Transition: " + toActivityString(event.getActivityType()) +
@@ -426,10 +269,218 @@ public class MainActivity extends AppCompatActivity {
                             new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date());
 
                     printToScreen(info);
+
+                    if (event.getActivityType() == DetectedActivity.WALKING) {
+                        System.out.println("Yo we gonna record");
+                        activity.setText(R.string.running);
+
+
+                        RecognitionListener recognitionListener = new RecognitionListener() {
+                            @Override
+                            public void onReadyForSpeech(Bundle bundle) {
+
+                            }
+
+                            @Override
+                            public void onBeginningOfSpeech() {
+
+                            }
+
+                            @Override
+                            public void onRmsChanged(float v) {
+
+                            }
+
+                            @Override
+                            public void onBufferReceived(byte[] bytes) {
+
+                            }
+
+                            @Override
+                            public void onEndOfSpeech() {
+
+                            }
+
+                            @Override
+                            public void onError(int i) {
+
+                            }
+
+                            @Override
+                            public void onResults(Bundle bundle) {
+                                ArrayList<String> data = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                                command.setText(data.get(0));
+                                callCommand(data.get(0));
+                            }
+
+                            @Override
+                            public void onPartialResults(Bundle bundle) {
+                            }
+
+                            @Override
+                            public void onEvent(int i, Bundle bundle) {
+                            }
+                        };
+
+                        speechRecognizer.setRecognitionListener(recognitionListener);
+                        Intent listenIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                        speechRecognizer.startListening(listenIntent);
+                        listening = true;
+                    }
+                    else {
+                        activity.setText(R.string.still);
+                        if(listening) {
+                            speechRecognizer.stopListening();
+                            listening = false;
+                        }
+                    }
                 }
             }
         }
     }
+
+    // Checks that the input string is a valid number 0-10
+    private boolean isValidNumber(String input){
+        HashMap<String, String> nums = new HashMap<String, String>();
+        nums.put("zero", "0");
+        nums.put("one", "1");
+        nums.put("two", "2");
+        nums.put("three", "3");
+        nums.put("four", "4");
+        nums.put("five", "5");
+        nums.put("six", "6");
+        nums.put("seven", "7");
+        nums.put("eight", "8");
+        nums.put("nine", "9");
+        nums.put("ten", "10");
+
+        if(nums.containsKey(input)) {
+            input = nums.get(input);
+        }
+        try {
+            int num = Integer.parseInt(input);
+            if (num >= 0 && num <= 10) {
+                return true;
+            }
+            return false;
+        }
+        catch(Exception e) {
+            return false;
+        }
+
+    }
+
+    // Checks the format of a command intended to change the volume
+    private boolean checkVolumeCommand(String command) {
+        String[] components = command.split(" ");
+        // Check the format "Volume X"
+        // X can only be a number 0-10.
+        // "Volume X" will set the volume of the phone to x/10 % of the max volume
+        if(components.length != 2) {
+            return false;
+        }
+        if(!components[0].toLowerCase().equals("volume") || !isValidNumber(components[1])) {
+            return false;
+        }
+        return true;
+    }
+
+    private double parseVolumeCommand(String command) {
+        HashMap<String, Double> nums = new HashMap<String, Double>();
+        nums.put("zero", 0.0);
+        nums.put("one", .1);
+        nums.put("two", .2);
+        nums.put("three", .3);
+        nums.put("four", .4);
+        nums.put("five", .5);
+        nums.put("six", .6);
+        nums.put("seven", .7);
+        nums.put("eight", .8);
+        nums.put("nine", .9);
+        nums.put("ten", 1.0);
+
+        String strNum = command.split(" ")[1];
+        if (nums.containsKey(strNum)) {
+            return nums.get(strNum);
+        }
+        return Integer.parseInt(strNum) / 10.0;
+    }
+
+    private void runVolumeCommand(String command) {
+        System.out.println("run volume command");
+        audioManager = (AudioManager) MainActivity.this.getSystemService(Context.AUDIO_SERVICE);
+        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        double percent = parseVolumeCommand(command);
+        int newVolume = (int) (maxVolume * percent);
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0);
+    }
+
+    private boolean checkCallCommand(String command) {
+        String[] components = command.split(" ");
+        if(!components[0].toLowerCase().equals("call")) {
+            return false;
+        }
+        // Check if person is in contacts
+        return true;
+    }
+
+    private void runCallCommand(String command) {
+        String[] parts = command.split(" ");
+        String target_name = parts[1];
+        System.out.println(target_name);
+        Uri uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
+        String[] projection = new String[] {ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER};
+        Cursor cursor = MainActivity.this.getContentResolver().query(uri, projection, null, null, null);
+
+        int idxName = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
+        int idxNumber = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+
+        String contactName = "";
+        String contactNumber = "";
+
+        if(cursor.moveToFirst()) {
+            do {
+                contactName = cursor.getString(idxName);
+                contactNumber = cursor.getString(idxNumber);
+
+                if (contactName.equals(target_name)){
+                    break;
+                }
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+
+        System.out.println(contactName);
+        System.out.println(contactNumber);
+        Intent callIntent = new Intent(Intent.ACTION_CALL);
+        String uriString = "tel:";
+        if (contactNumber.length() == 0) {
+            return;
+        }
+
+        uriString = uriString.concat(contactNumber);
+        System.out.println(uriString);
+        callIntent.setData(Uri.parse(uriString));
+
+        if (ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        startActivity(callIntent);
+    }
+
+
+    private void callCommand(String command) {
+        if(checkVolumeCommand(command)) {
+            runVolumeCommand(command);
+        }
+        else if(checkCallCommand(command)) {
+            runCallCommand(command);
+        }
+    }
+
+
 
 
 }
