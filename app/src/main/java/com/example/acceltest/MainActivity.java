@@ -271,7 +271,6 @@ public class MainActivity extends AppCompatActivity {
                     printToScreen(info);
 
                     if (event.getActivityType() == DetectedActivity.WALKING) {
-                        System.out.println("Yo we gonna record");
                         activity.setText(R.string.running);
 
 
